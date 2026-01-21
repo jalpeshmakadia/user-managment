@@ -2,16 +2,20 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\UserStatus;
 use App\Events\UserCreated;
 use App\Repositories\UserRepository;
+use App\Services\AvatarStorageService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class UserController extends Controller
 {
-    public function __construct(private readonly UserRepository $users)
+    public function __construct(
+        private readonly UserRepository $users,
+        private readonly AvatarStorageService $avatars
+    )
     {
     }
 
@@ -19,10 +23,13 @@ class UserController extends Controller
     {
         $search = trim((string) $request->query('search', ''));
         $withTrashed = (bool) $request->query('withTrashed', false);
+        $status = (string) $request->query('status', '');
+        $perPage = (int) $request->query('per_page', config('users.per_page', 10));
         $users = $this->users->all([
             'search' => $search,
             'withTrashed' => $withTrashed,
-            'perPage' => 10,
+            'status' => $status,
+            'perPage' => $perPage,
         ]);
 
         if ($request->ajax()) {
@@ -32,17 +39,18 @@ class UserController extends Controller
             ]);
         }
 
-        return view('users.index', compact('users', 'search', 'withTrashed'));
+        return view('users.index', compact('users', 'search', 'withTrashed', 'status'));
     }
 
     public function store(Request $request)
     {
         $data = $this->validateUser($request);
+        $data['phone'] = $this->normalizePhone($data['phone'] ?? null);
         $plainPassword = Str::random(12);
         $data['password'] = $plainPassword;
 
         if ($request->hasFile('avatar')) {
-            $data['avatar'] = $this->users->storeAvatar($request->file('avatar'));
+            $data['avatar'] = $this->avatars->store($request->file('avatar'));
         }
 
         $user = $this->users->create($data);
@@ -63,7 +71,7 @@ class UserController extends Controller
 
         return response()->json([
             'user' => $record,
-            'avatar_url' => $record->avatar ? Storage::url($record->avatar) : null,
+            'avatar_url' => $record->avatar_url,
             'deleted_at' => $record->deleted_at,
         ]);
     }
@@ -76,13 +84,14 @@ class UserController extends Controller
         }
 
         $data = $this->validateUser($request, $user);
+        $data['phone'] = $this->normalizePhone($data['phone'] ?? null);
 
         if (empty($data['password'])) {
             unset($data['password']);
         }
 
         if ($request->hasFile('avatar')) {
-            $data['avatar'] = $this->users->storeAvatar($request->file('avatar'), $record->avatar);
+            $data['avatar'] = $this->avatars->store($request->file('avatar'), $record->avatar);
         }
 
         $updated = $this->users->update($user, $data);
@@ -142,9 +151,29 @@ class UserController extends Controller
                 Rule::unique('users', 'email')->ignore($userId),
             ],
             'password' => ['nullable', 'string', 'min:6'],
-            'status' => ['required', Rule::in(['active', 'inactive'])],
-            'phone' => ['nullable', 'string', 'max:30'],
-            'avatar' => ['nullable', 'image', 'max:2048'],
+            'status' => ['required', Rule::enum(UserStatus::class)],
+            'phone' => ['nullable', 'string', 'max:12', 'regex:/^\\+?[0-9\\s\\-\\(\\)]+$/'],
+            'avatar' => ['nullable', 'image', 'mimes:jpeg,jpg,png,gif,webp', 'max:2048'],
         ]);
+    }
+
+    private function normalizePhone(?string $phone): ?string
+    {
+        if ($phone === null) {
+            return null;
+        }
+
+        $phone = trim($phone);
+        if ($phone === '') {
+            return null;
+        }
+
+        $leadingPlus = str_starts_with($phone, '+');
+        $digits = preg_replace('/\\D+/', '', $phone) ?? '';
+        if ($digits === '') {
+            return null;
+        }
+
+        return $leadingPlus ? "+{$digits}" : $digits;
     }
 }

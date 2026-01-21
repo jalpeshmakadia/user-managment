@@ -17,9 +17,9 @@
             @forelse ($users as $user)
                 <tr @if ($user->deleted_at) class="table-warning" @endif>
                     <td>
-                        @if ($user->avatar)
+                        @if ($user->avatar_url)
                             <img
-                                src="{{ \Illuminate\Support\Facades\Storage::url($user->avatar) }}"
+                                src="{{ $user->avatar_url }}"
                                 alt="Avatar"
                                 class="rounded-circle"
                                 width="40"
@@ -30,15 +30,15 @@
                                 class="rounded-circle bg-secondary text-white d-flex align-items-center justify-content-center"
                                 style="width: 40px; height: 40px;"
                             >
-                                {{ strtoupper(substr($user->first_name ?: $user->last_name, 0, 1)) }}
+                                {{ strtoupper(substr($user->full_name ?: $user->email, 0, 1)) }}
                             </div>
                         @endif
                     </td>
-                    <td>{{ trim($user->first_name . ' ' . $user->last_name) }}</td>
+                    <td>{{ $user->full_name }}</td>
                     <td>{{ $user->email }}</td>
                     <td>
-                        <span class="badge {{ $user->status === 'active' ? 'bg-success' : 'bg-secondary' }}">
-                            {{ ucfirst($user->status) }}
+                        <span class="badge {{ $user->status === \App\Enums\UserStatus::Active ? 'bg-success' : 'bg-secondary' }}">
+                            {{ $user->status->label() }}
                         </span>
                     </td>
                     <td>{{ $user->phone ?? '—' }}</td>
@@ -46,13 +46,6 @@
                     <td>{{ $user->last_login_at?->format('Y-m-d H:i') ?? '—' }}</td>
                     <td>{{ $user->last_login_ip ?? '—' }}</td>
                     <td class="text-end">
-                        <button
-                            type="button"
-                            class="btn btn-sm btn-outline-primary me-1 edit-user"
-                            data-id="{{ $user->id }}"
-                        >
-                            Edit
-                        </button>
                         @if ($user->deleted_at)
                             <button
                                 type="button"
@@ -62,6 +55,13 @@
                                 Restore
                             </button>
                         @else
+                            <button
+                                type="button"
+                                class="btn btn-sm btn-outline-primary me-1 edit-user"
+                                data-id="{{ $user->id }}"
+                            >
+                                Edit
+                            </button>
                             <button
                                 type="button"
                                 class="btn btn-sm btn-outline-danger delete-user"

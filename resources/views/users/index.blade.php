@@ -2,6 +2,7 @@
 
 @section('content')
     <div id="users-page" data-index-url="{{ route('users.index') }}" data-base-url="{{ url('users') }}">
+        <div id="users-alerts" class="mb-3"></div>
         <div class="card shadow-sm">
             <div class="card-header bg-white">
                 <div class="row g-2 align-items-center">
@@ -15,6 +16,13 @@
                         >
                     </div>
                     <div class="col-md-3">
+                        <select class="form-select" id="status-filter">
+                            <option value="">All statuses</option>
+                            <option value="active" {{ $status === 'active' ? 'selected' : '' }}>Active</option>
+                            <option value="inactive" {{ $status === 'inactive' ? 'selected' : '' }}>Inactive</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
                         <div class="form-check">
                             <input
                                 class="form-check-input"
@@ -27,7 +35,7 @@
                             </label>
                         </div>
                     </div>
-                    <div class="col-md-5 text-md-end">
+                    <div class="col-md-3 text-md-end">
                         <button type="button" class="btn btn-primary" id="add-user-btn">
                             Add User
                         </button>

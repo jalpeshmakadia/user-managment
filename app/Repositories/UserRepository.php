@@ -2,11 +2,10 @@
 
 namespace App\Repositories;
 
+use App\Enums\UserStatus;
 use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Storage;
 
 class UserRepository
 {
@@ -14,7 +13,11 @@ class UserRepository
     {
         $search = trim((string) ($filters['search'] ?? ''));
         $withTrashed = (bool) ($filters['withTrashed'] ?? false);
-        $perPage = (int) ($filters['perPage'] ?? 10);
+        $status = $filters['status'] ?? null;
+        $perPage = (int) ($filters['perPage'] ?? config('users.per_page', 10));
+        if ($perPage < 1) {
+            $perPage = config('users.per_page', 10);
+        }
 
         $query = User::query();
 
@@ -29,6 +32,13 @@ class UserRepository
                     ->orWhere('email', 'like', "%{$search}%")
                     ->orWhere('phone', 'like', "%{$search}%");
             });
+        }
+
+        if ($status !== null && $status !== '') {
+            $statusEnum = UserStatus::tryFrom((string) $status);
+            if ($statusEnum) {
+                $query->where('status', $statusEnum->value);
+            }
         }
 
         return $query->orderByDesc('id')
@@ -81,14 +91,5 @@ class UserRepository
         }
 
         return (bool) $user->restore();
-    }
-
-    public function storeAvatar(UploadedFile $file, ?string $existingPath = null): string
-    {
-        if ($existingPath) {
-            Storage::disk('public')->delete($existingPath);
-        }
-
-        return $file->store('avatars', 'public');
     }
 }
