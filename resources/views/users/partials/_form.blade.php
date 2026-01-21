@@ -48,8 +48,11 @@
                         </div>
                         <div class="col-md-6">
                             <label class="form-label" for="avatar">Avatar</label>
-                            <input type="file" class="form-control" id="avatar" name="avatar" accept="image/*">
+                            <input type="file" class="form-control" id="avatar" name="avatar" accept="image/jpeg,image/jpg,image/png,image/gif,image/webp">
                             <div class="invalid-feedback text-danger"></div>
+                            <div id="avatar-preview" class="mt-2" style="display: none;">
+                                <img id="avatar-preview-img" src="" alt="Avatar preview" class="img-thumbnail" style="max-width: 150px; max-height: 150px;">
+                            </div>
                         </div>
                     </div>
                 </div>

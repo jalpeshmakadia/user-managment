@@ -7,7 +7,7 @@ use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 
-class UserRepository
+class UserRepository implements UserRepositoryInterface
 {
     public function all(array $filters = []): LengthAwarePaginator
     {
@@ -27,10 +27,18 @@ class UserRepository
 
         if ($search !== '') {
             $query->where(function (Builder $builder) use ($search) {
-                $builder->where('first_name', 'like', "%{$search}%")
-                    ->orWhere('last_name', 'like', "%{$search}%")
-                    ->orWhere('email', 'like', "%{$search}%")
-                    ->orWhere('phone', 'like', "%{$search}%");
+                // Use full-text search for names if available, fallback to LIKE
+                if (config('database.default') === 'mysql') {
+                    $builder->whereRaw("MATCH(first_name, last_name) AGAINST(? IN BOOLEAN MODE)", [$search])
+                        ->orWhere('email', 'like', "%{$search}%")
+                        ->orWhere('phone', 'like', "%{$search}%");
+                } else {
+                    // Fallback for other databases
+                    $builder->where('first_name', 'like', "%{$search}%")
+                        ->orWhere('last_name', 'like', "%{$search}%")
+                        ->orWhere('email', 'like', "%{$search}%")
+                        ->orWhere('phone', 'like', "%{$search}%");
+                }
             });
         }
 

@@ -11,6 +11,8 @@ $(function () {
     const $form = $('#user-form');
     const $alerts = $('#users-alerts');
     const $passwordWrapper = $('#password-wrapper');
+    const $saveBtn = $('#save-user-btn');
+    let isLoading = false;
 
     $.ajaxSetup({
         headers: {
@@ -28,7 +30,24 @@ $(function () {
         $('#user-id').val('');
         resetErrors();
         $passwordWrapper.show();
+        $('#avatar-preview').hide();
+        $('#avatar-preview-img').attr('src', '');
     };
+
+    // Avatar preview
+    $('#avatar').on('change', function (e) {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                $('#avatar-preview').show();
+                $('#avatar-preview-img').attr('src', e.target.result);
+            };
+            reader.readAsDataURL(file);
+        } else {
+            $('#avatar-preview').hide();
+        }
+    });
 
     const showAlert = (type, message) => {
         if (!$alerts.length) {
@@ -44,6 +63,16 @@ $(function () {
         $alerts.html(alert);
     };
 
+    const setLoadingState = (loading) => {
+        isLoading = loading;
+        $saveBtn.prop('disabled', loading);
+        if (loading) {
+            $saveBtn.html('<span class="spinner-border spinner-border-sm me-2"></span>Saving...');
+        } else {
+            $saveBtn.html('Save User');
+        }
+    };
+
     const loadUsers = (url) => {
         const query = {
             search: $('#search-users').val(),
@@ -51,9 +80,12 @@ $(function () {
             status: $('#status-filter').val(),
         };
 
+        $('#users-table').addClass('opacity-50');
         $.get(url || indexUrl, query, (response) => {
             $('#users-table').html(response.table);
             $('#users-pagination').html(response.pagination);
+        }).always(() => {
+            $('#users-table').removeClass('opacity-50');
         });
     };
 
@@ -85,6 +117,8 @@ $(function () {
     $(document).on('click', '.edit-user', function () {
         resetForm();
         const userId = $(this).data('id');
+        const $btn = $(this);
+        $btn.prop('disabled', true);
 
         $.get(`${baseUrl}/${userId}`, (response) => {
             $('#user-id').val(userId);
@@ -95,7 +129,22 @@ $(function () {
             $('#phone').val(response.user.phone || '');
             $('#userModalLabel').text('Edit User');
             $passwordWrapper.hide();
+            
+            // Show existing avatar if available
+            if (response.avatar_url) {
+                $('#avatar-preview').show();
+                $('#avatar-preview-img').attr('src', response.avatar_url);
+            }
+            
             userModal?.show();
+        }).always(() => {
+            $btn.prop('disabled', false);
+        }).fail((xhr) => {
+            if (xhr.status === 404) {
+                showAlert('warning', 'User not found.');
+            } else {
+                showAlert('danger', 'Failed to load user data.');
+            }
         });
     });
 
@@ -105,6 +154,9 @@ $(function () {
         }
 
         const userId = $(this).data('id');
+        const $btn = $(this);
+        $btn.prop('disabled', true);
+        
         $.post(`${baseUrl}/${userId}`, { _method: 'DELETE' })
             .done((response) => {
                 showAlert('success', response.message || 'User deleted successfully.');
@@ -113,14 +165,20 @@ $(function () {
             .fail((xhr) => {
                 if (xhr.status === 404) {
                     showAlert('warning', xhr.responseJSON?.message || 'User not found.');
-                    return;
+                } else {
+                    showAlert('danger', xhr.responseJSON?.message || 'Delete failed. Please try again.');
                 }
-                showAlert('danger', 'Delete failed. Please try again.');
+            })
+            .always(() => {
+                $btn.prop('disabled', false);
             });
     });
 
     $(document).on('click', '.restore-user', function () {
         const userId = $(this).data('id');
+        const $btn = $(this);
+        $btn.prop('disabled', true);
+        
         $.post(`${baseUrl}/${userId}/restore`, { _method: 'PUT' })
             .done((response) => {
                 showAlert('success', response.message || 'User restored successfully.');
@@ -129,9 +187,12 @@ $(function () {
             .fail((xhr) => {
                 if (xhr.status === 404) {
                     showAlert('warning', xhr.responseJSON?.message || 'User not found.');
-                    return;
+                } else {
+                    showAlert('danger', xhr.responseJSON?.message || 'Restore failed. Please try again.');
                 }
-                showAlert('danger', 'Restore failed. Please try again.');
+            })
+            .always(() => {
+                $btn.prop('disabled', false);
             });
     });
 
@@ -188,11 +249,16 @@ $(function () {
                 minlength: 6,
             },
             status: { required: true },
-            phone: { phone: true, maxlength: 12 },
+            phone: { phone: true, maxlength: 20 },
             avatar: { avatarMimeType: true },
         },
         submitHandler: function (form) {
+            if (isLoading) {
+                return false;
+            }
+
             resetErrors();
+            setLoadingState(true);
 
             const formData = new FormData(form);
             const userId = $('#user-id').val();
@@ -215,21 +281,26 @@ $(function () {
                     loadUsers();
                 },
                 error: (xhr) => {
-                    if (xhr.status !== 422) {
-                        showAlert('danger', 'Something went wrong. Please try again.');
-                        return;
+                    if (xhr.status === 422) {
+                        const errors = xhr.responseJSON.errors || {};
+                        showAlert('warning', 'Please fix the highlighted fields and try again.');
+                        Object.keys(errors).forEach((field) => {
+                            const message = errors[field][0];
+                            const $input = $form.find(`[name="${field}"]`);
+                            $input.addClass('is-invalid');
+                            $input.next('.invalid-feedback').text(message);
+                        });
+                    } else {
+                        const message = xhr.responseJSON?.message || 'Something went wrong. Please try again.';
+                        showAlert('danger', message);
                     }
-
-                    const errors = xhr.responseJSON.errors || {};
-                    showAlert('warning', 'Please fix the highlighted fields and try again.');
-                    Object.keys(errors).forEach((field) => {
-                        const message = errors[field][0];
-                        const $input = $form.find(`[name="${field}"]`);
-                        $input.addClass('is-invalid');
-                        $input.next('.invalid-feedback').text(message);
-                    });
+                },
+                complete: () => {
+                    setLoadingState(false);
                 },
             });
+
+            return false;
         },
     });
 });

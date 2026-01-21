@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Models\User;
+use App\Observers\UserObserver;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Support\ServiceProvider;
 
@@ -12,7 +14,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // Bind repository interface to implementation
+        $this->app->bind(
+            \App\Repositories\UserRepositoryInterface::class,
+            \App\Repositories\UserRepository::class
+        );
     }
 
     /**
@@ -21,5 +27,8 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Paginator::useBootstrapFive();
+        
+        // Register model observers
+        User::observe(UserObserver::class);
     }
 }
