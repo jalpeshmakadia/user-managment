@@ -36,7 +36,9 @@ APP_KEY=
 APP_DEBUG=true
 APP_URL=http://localhost:8000
 
-DB_CONNECTION=sqlite
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
 DB_DATABASE=your_db
 DB_USERNAME=your_user
 DB_PASSWORD=your_pass
@@ -54,10 +56,10 @@ php artisan key:generate
 
 4) Prepare the database
 
-The app defaults to SQLite and expects `database/database.sqlite`.
+The app defaults to MySQL. Make sure the database configured in `.env` exists,
+then run:
 
 ```
-php -r "file_exists('database/database.sqlite') || touch('database/database.sqlite');"
 php artisan migrate --seed
 ```
 
@@ -79,12 +81,12 @@ Open `http://localhost:8000` in your browser.
 
 ### Database
 
-To use MySQL or another database, update `.env`:
+To use a different database, update `.env`:
 
 ```
-DB_CONNECTION=mysql
+DB_CONNECTION=pgsql
 DB_HOST=127.0.0.1
-DB_PORT=3306
+DB_PORT=5432
 DB_DATABASE=your_db
 DB_USERNAME=your_user
 DB_PASSWORD=your_pass
