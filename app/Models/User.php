@@ -81,4 +81,49 @@ class User extends Authenticatable
 
         return Storage::url($this->avatar);
     }
+
+    /**
+     * Scope a query to filter by status.
+     */
+    public function scopeStatus($query, ?UserStatus $status): void
+    {
+        if ($status) {
+            $query->where('status', $status->value);
+        }
+    }
+
+    /**
+     * Scope a query to search by name, email, or phone.
+     */
+    public function scopeSearch($query, string $search): void
+    {
+        if (empty($search)) {
+            return;
+        }
+
+        $query->where(function ($builder) use ($search) {
+            // Use full-text search for names if available, fallback to LIKE
+            if (config('database.default') === 'mysql') {
+                $builder->whereRaw("MATCH(first_name, last_name) AGAINST(? IN BOOLEAN MODE)", [$search])
+                    ->orWhere('email', 'like', "%{$search}%")
+                    ->orWhere('phone', 'like', "%{$search}%");
+            } else {
+                // Fallback for other databases
+                $builder->where('first_name', 'like', "%{$search}%")
+                    ->orWhere('last_name', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%")
+                    ->orWhere('phone', 'like', "%{$search}%");
+            }
+        });
+    }
+
+    /**
+     * Scope a query to include soft deleted records.
+     */
+    public function scopeWithTrashed($query, bool $withTrashed = true): void
+    {
+        if ($withTrashed) {
+            $query->withTrashed();
+        }
+    }
 }

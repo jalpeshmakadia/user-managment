@@ -2,21 +2,22 @@
 
 namespace App\Http\Controllers;
 
-use App\Events\UserCreated;
+use App\Exceptions\UserNotFoundException;
+use App\Exceptions\UserOperationException;
 use App\Http\Requests\StoreUserRequest;
 use App\Http\Requests\UpdateUserRequest;
+use App\Http\Resources\UserResource;
 use App\Repositories\UserRepositoryInterface;
-use App\Services\AvatarStorageService;
+use App\Services\UserService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Log;
 
 class UserController extends Controller
 {
     public function __construct(
         private readonly UserRepositoryInterface $users,
-        private readonly AvatarStorageService $avatars
+        private readonly UserService $userService
     ) {
     }
 
@@ -49,29 +50,26 @@ class UserController extends Controller
     public function store(StoreUserRequest $request): JsonResponse
     {
         try {
-            return DB::transaction(function () use ($request) {
-                $data = $request->validated();
-                $data['phone'] = $this->normalizePhone($data['phone'] ?? null);
-                
-                // Generate password - will be hashed by model cast
-                $plainPassword = Str::random(config('users.password_length', 12));
-                $data['password'] = $plainPassword;
+            $data = $request->validated();
+            
+            if ($request->hasFile('avatar')) {
+                $data['avatar'] = $request->file('avatar');
+            }
 
-                if ($request->hasFile('avatar')) {
-                    $data['avatar'] = $this->avatars->store($request->file('avatar'));
-                }
+            $user = $this->userService->createUser($data);
 
-                $user = $this->users->create($data);
-                
-                // Dispatch event with plain password for email (only used in listener)
-                event(new UserCreated($user, $plainPassword));
-
-                return response()->json([
+            return (new UserResource($user))
+                ->additional([
                     'message' => 'User created successfully.',
-                    'user' => $user,
-                ], 201);
-            });
-        } catch (\Exception $e) {
+                ])
+                ->response()
+                ->setStatusCode(201);
+        } catch (UserOperationException $e) {
+            Log::error('User creation failed', [
+                'error' => $e->getMessage(),
+                'data' => $request->except(['password', 'avatar']),
+            ]);
+
             return response()->json([
                 'message' => 'Failed to create user. Please try again.',
                 'error' => config('app.debug') ? $e->getMessage() : null,
@@ -81,59 +79,44 @@ class UserController extends Controller
 
     public function show(int $user): JsonResponse
     {
-        $record = $this->users->findById($user);
-        
-        if (!$record) {
-            return response()->json([
-                'message' => 'User not found.',
-            ], 404);
-        }
+        try {
+            $record = $this->userService->findUser($user);
 
-        return response()->json([
-            'user' => $record,
-            'avatar_url' => $record->avatar_url,
-            'deleted_at' => $record->deleted_at,
-        ]);
+            return (new UserResource($record))
+                ->additional([
+                    'message' => 'User retrieved successfully.',
+                ])
+                ->response();
+        } catch (UserNotFoundException $e) {
+            return $e->render();
+        }
     }
 
     public function update(UpdateUserRequest $request, int $user): JsonResponse
     {
-        $record = $this->users->findById($user);
-        
-        if (!$record) {
-            return response()->json([
-                'message' => 'User not found.',
-            ], 404);
-        }
-
         try {
             $data = $request->validated();
-            $data['phone'] = $this->normalizePhone($data['phone'] ?? null);
-
-            if (empty($data['password'])) {
-                unset($data['password']);
-            }
 
             if ($request->hasFile('avatar')) {
-                $data['avatar'] = $this->avatars->store($request->file('avatar'), $record->avatar);
+                $data['avatar'] = $request->file('avatar');
             }
 
-            $updated = $this->users->update($user, $data);
-            
-            if (!$updated) {
-                return response()->json([
-                    'message' => 'User update failed.',
-                ], 500);
-            }
+            $updatedUser = $this->userService->updateUser($user, $data);
 
-            // Refresh the model to get updated data
-            $record->refresh();
-
-            return response()->json([
-                'message' => 'User updated successfully.',
-                'user' => $record,
+            return (new UserResource($updatedUser))
+                ->additional([
+                    'message' => 'User updated successfully.',
+                ])
+                ->response();
+        } catch (UserNotFoundException $e) {
+            return $e->render();
+        } catch (UserOperationException $e) {
+            Log::error('User update failed', [
+                'error' => $e->getMessage(),
+                'user_id' => $user,
+                'data' => $request->except(['password', 'avatar']),
             ]);
-        } catch (\Exception $e) {
+
             return response()->json([
                 'message' => 'Failed to update user. Please try again.',
                 'error' => config('app.debug') ? $e->getMessage() : null,
@@ -143,59 +126,49 @@ class UserController extends Controller
 
     public function destroy(int $user): JsonResponse
     {
-        $record = $this->users->findById($user);
-        
-        if (!$record) {
-            return response()->json([
-                'message' => 'User not found.',
-            ], 404);
-        }
+        try {
+            $this->userService->deleteUser($user);
 
-        $deleted = $this->users->delete($user);
-        
-        if (!$deleted) {
             return response()->json([
-                'message' => 'User deletion failed.',
+                'message' => 'User deleted successfully.',
+            ]);
+        } catch (UserNotFoundException $e) {
+            return $e->render();
+        } catch (UserOperationException $e) {
+            Log::error('User deletion failed', [
+                'error' => $e->getMessage(),
+                'user_id' => $user,
+            ]);
+
+            return response()->json([
+                'message' => 'Failed to delete user. Please try again.',
+                'error' => config('app.debug') ? $e->getMessage() : null,
             ], 500);
         }
-
-        return response()->json([
-            'message' => 'User deleted successfully.',
-        ]);
     }
 
     public function restore(int $user): JsonResponse
     {
-        $restored = $this->users->restore($user);
-        
-        if (!$restored) {
+        try {
+            $restoredUser = $this->userService->restoreUser($user);
+
+            return (new UserResource($restoredUser))
+                ->additional([
+                    'message' => 'User restored successfully.',
+                ])
+                ->response();
+        } catch (UserNotFoundException $e) {
+            return $e->render();
+        } catch (UserOperationException $e) {
+            Log::error('User restore failed', [
+                'error' => $e->getMessage(),
+                'user_id' => $user,
+            ]);
+
             return response()->json([
-                'message' => 'User not found or cannot be restored.',
-            ], 404);
+                'message' => 'Failed to restore user. Please try again.',
+                'error' => config('app.debug') ? $e->getMessage() : null,
+            ], 500);
         }
-
-        return response()->json([
-            'message' => 'User restored successfully.',
-        ]);
-    }
-
-    private function normalizePhone(?string $phone): ?string
-    {
-        if ($phone === null) {
-            return null;
-        }
-
-        $phone = trim($phone);
-        if ($phone === '') {
-            return null;
-        }
-
-        $leadingPlus = str_starts_with($phone, '+');
-        $digits = preg_replace('/\D+/', '', $phone) ?? '';
-        if ($digits === '') {
-            return null;
-        }
-
-        return $leadingPlus ? "+{$digits}" : $digits;
     }
 }

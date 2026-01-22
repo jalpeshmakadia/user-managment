@@ -14,6 +14,7 @@ class ExampleTest extends TestCase
     {
         $response = $this->get('/');
 
-        $response->assertStatus(200);
+        // The root route redirects to users.index
+        $response->assertStatus(302);
     }
 }

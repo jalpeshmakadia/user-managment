@@ -19,6 +19,11 @@ class AppServiceProvider extends ServiceProvider
             \App\Repositories\UserRepositoryInterface::class,
             \App\Repositories\UserRepository::class
         );
+
+        // Bind services
+        $this->app->singleton(\App\Services\PhoneNormalizationService::class);
+        $this->app->singleton(\App\Services\AvatarStorageService::class);
+        $this->app->singleton(\App\Services\UserService::class);
     }
 
     /**
